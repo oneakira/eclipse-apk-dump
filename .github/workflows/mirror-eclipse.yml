@@ -1,156 +1,83 @@
 name: Mirror Eclipse APK
 
-
 on:
-
   schedule:
-
     - cron: '0 */6 * * *'   # every 6 hours
-
   workflow_dispatch:
 
-
 permissions:
-
   contents: write
 
-
 concurrency:
-
   group: mirror-eclipse
-
   cancel-in-progress: false
 
-
 jobs:
-
   mirror:
-
     runs-on: ubuntu-latest
-
     timeout-minutes: 10
-
     steps:
-
       - name: Download APK
-
         run: |
-
           curl -fL --retry 3 --retry-delay 5 \
-
             -o Eclipse.apk \
-
             "https://eclipse-android-updater.netlify.app/Eclipse-latest.apk"
 
-
       - name: Verify it's a real APK
-
         run: |
-
           unzip -t Eclipse.apk > /dev/null || { echo "Downloaded file is not a valid APK"; exit 1; }
 
-
       - name: Verify signing certificate
-
         env:
-
           EXPECTED: "18f904b5a1904154ebad737952edb8b951cd51b2e7b34920d63f82dba4a0142d"
-
         run: |
-
           BUILD_TOOLS=$(ls -d "$ANDROID_HOME"/build-tools/*/ | sort -V | tail -1)
-
           APKSIGNER="${BUILD_TOOLS}apksigner"
-
           ACTUAL=$("$APKSIGNER" verify --print-certs Eclipse.apk \
-
             | sed -n 's/.*SHA-256 digest: \([0-9a-f]*\).*/\1/p' | head -1)
-
           echo "Expected: $EXPECTED"
-
           echo "Actual:   $ACTUAL"
-
           if [ "$ACTUAL" != "$EXPECTED" ]; then
-
             echo "::error::Signing certificate mismatch — refusing to publish"
-
             exit 1
-
           fi
-
           echo "Certificate verified ✓"
 
-
       - name: Extract version info
-
         run: |
-
           BUILD_TOOLS=$(ls -d "$ANDROID_HOME"/build-tools/*/ | sort -V | tail -1)
-
           AAPT="${BUILD_TOOLS}aapt"
-
           DUMP=$("$AAPT" dump badging Eclipse.apk)
-
           VERSION_NAME=$(echo "$DUMP" | sed -n "s/.*versionName='\([^']*\)'.*/\1/p")
-
           VERSION_CODE=$(echo "$DUMP" | sed -n "s/.*versionCode='\([^']*\)'.*/\1/p")
-
           if [ -z "$VERSION_NAME" ] || [ -z "$VERSION_CODE" ]; then
-
             echo "Failed to extract version info"; exit 1
-
           fi
-
           SHA=$(sha256sum Eclipse.apk | cut -d' ' -f1)
-
           echo "VERSION_NAME=$VERSION_NAME" >> $GITHUB_ENV
-
           echo "VERSION_CODE=$VERSION_CODE" >> $GITHUB_ENV
-
           echo "SHA=$SHA" >> $GITHUB_ENV
-
           echo "TAG=v${VERSION_NAME}+${VERSION_CODE}" >> $GITHUB_ENV
 
-
       - name: Check if release already exists
-
         id: check
-
         run: |
-
           CODE=$(curl -s -o /dev/null -w "%{http_code}" \
-
             -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-
             "https://api.github.com/repos/${{ github.repository }}/releases/tags/${{ env.TAG }}")
-
           echo "STATUS=$CODE" >> $GITHUB_OUTPUT
 
-
       - name: Create release
-
         if: steps.check.outputs.STATUS == '404'
-
         uses: softprops/action-gh-release@v2
-
         with:
-
           tag_name: ${{ env.TAG }}
-
           name: Eclipse ${{ env.VERSION_NAME }}
-
           body: |
-
             Mirrored from https://eclipse-android-updater.netlify.app/Eclipse-latest.apk
-
             versionName: ${{ env.VERSION_NAME }}
-
             versionCode: ${{ env.VERSION_CODE }}
-
             SHA-256: ${{ env.SHA }}
-
           files: Eclipse.apk
-
         env:
-
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
