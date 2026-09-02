@@ -21,7 +21,7 @@ jobs:
         run: |
           curl -fL --retry 3 --retry-delay 5 \
             -o Eclipse.apk \
-            "https://eclipse-android-updater.netlify.app/Eclipse-latest.apk"
+            "https://eclipsemusic.app/download/android"
 
       - name: Verify it's a real APK
         run: |
